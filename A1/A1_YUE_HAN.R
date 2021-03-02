@@ -1,110 +1,63 @@
----
-title: "Assignment 1"
-author: "Yue Han"
-date: "2/15/2021"
-output: pdf_document
----
+# A1 YUE HAN
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
-```
 
 ## PART 1
 
-
-```{r read in data, include=FALSE}
 setwd("/Users/yuehan/Desktop/Duke/21Spring/Econ613/Assignments/A1/dat")
 if (!("data" %in% ls())) {
   data <- map(dir(),read.csv)
 }
 names(data) <- str_replace(dir(),".csv","")
 setwd("/Users/yuehan/Desktop/Duke/21Spring/econ613_hw/A1")
-```
 
 ### Exercise 1 Missing data
 
-Number of students
-
-```{r Number of students}
+#### Number of students
 data$datstu %>% nrow()
-```
 
-Number of schools
+#### Number of schools
 
-1. the number of schools in school dataset
+#1. the number of schools in school dataset
 
-```{r Number of schools}
 data$datsss %>% select(schoolcode) %>% distinct() %>% nrow()
-```
 
-2. the number of schools in student dataset (schools that students applied for)
+#2. the number of schools in student dataset (schools that students applied for)
 
-```{r}
 choices_school <- data$datstu %>% 
   select(X,schoolcode1:schoolcode6,rankplace, score,jssdistrict) %>% 
   pivot_longer(schoolcode1:schoolcode6, names_to = "choice", values_to = "school") %>%
   mutate(choice = str_extract(choice,"[0-9]"))
 choices_school %>% select(school) %>% distinct() %>% drop_na() %>% nrow()
-```
 
-Number of programs
+#### Number of programs
 
-```{r Number of programs}
 choices_program <- data$datstu %>% 
   select(X,choicepgm1:choicepgm6) %>% 
   pivot_longer(choicepgm1:choicepgm6, names_to = "choice", values_to = "program") %>%
   mutate(choice = str_extract(choice,"[0-9]"))
 choices_program %>% select(program) %>% distinct() %>% filter(program != "") %>% nrow()
-```
- 
-Number of choices (school,program)
 
-```{r Number of choices}
+#### Number of choices (school,program)
+
 choices <- merge(choices_program, choices_school, by=c("X", "choice"))
 choices %>% select(program,school) %>% distinct() %>% drop_na() %>% filter(program != "") %>% nrow()
-```
 
-I exclude three types of invalid records:
+#### Missing test score
 
-1. program is NA
-
-```{r}
-choices %>% select(program,school) %>% distinct() %>% filter(program == "") %>% nrow()
-```
-
-2. school is NA
-
-```{r}
-choices %>% select(program,school) %>% distinct() %>% filter(is.na(school)) %>% nrow()
-```
-
-3. both program and school is NA
-
-```{r}
-choices %>% select(program,school) %>% distinct() %>% filter(program == "", is.na(school)) %>% nrow()
-```
-
-Missing test score
-
-```{r Missing test score}
 data$datstu %>% filter(is.na(score)) %>% nrow()
-```
 
-Apply to the same school (different programs)
+#### Apply to the same school (different programs)
 
-```{r Apply to the same school}
 choices_school %>%
   filter(!is.na(school)) %>%
   group_by(X) %>%
   dplyr::summarise(n=n(),n_d=n_distinct(school),.groups="drop") %>%
   filter(n!=n_d) %>%
   nrow()
-```
 
-Apply to less than 6 choices
+#### Apply to less than 6 choices
 
-```{r Apply to less than 6 choices}
 choices %>%
   mutate(invalid_choice = case_when(
     is.na(school) ~ 1,
@@ -114,11 +67,9 @@ choices %>%
   filter(invalid_choice == 1) %>% 
   distinct(X) %>%
   nrow()
-```
 
 ### Exercise 2 Data
 
-```{r}
 schools <- data$datsss %>% 
   select(-c(X,schoolname)) %>%
   distinct() %>% 
@@ -134,36 +85,22 @@ admitted_summary <- admitted %>%
   select(school, program, sssdistrict, ssslong, ssslat, score) %>%
   group_by(school, program, sssdistrict, ssslong, ssslat) %>%
   dplyr::summarise(cutoff = min(score),
-            quality = mean(score),
-            size = n(),.groups="drop")
-```
-
-```{r}
-admitted_summary %>% head(20)
-```
+                   quality = mean(score),
+                   size = n(),.groups="drop")
 
 ### Exercise 3 Distance
 
-```{r distance function}
 dis <- function(ssslong,ssslat,jsslong,jsslat){
   d <- sqrt((69.172*(ssslong-jsslong)*cos(jsslat/57.3))^2 + (69.172*(ssslat-jsslat))^2)
   return(d)
 }
-```
 
-```{r}
 school_distance <- admitted %>% 
   merge(select(data$datjss,-X), by="jssdistrict", all.x = TRUE) %>%
   mutate(distance = dis(ssslong, ssslat, point_x, point_y))
-```
-
-```{r}
-school_distance %>% select(X,jssdistrict,sssdistrict,distance) %>% head(20)
-```
 
 ### Exercise 4 Descriptive Characteristics
 
-```{r}
 ad_summary <- function(n,q = 0) {
   ad <- school_distance  %>% 
     filter(rankplace == n)
@@ -171,40 +108,32 @@ ad_summary <- function(n,q = 0) {
     q_sc <- quantile(ad$score)
     ad <- ad %>% filter(score>=q_sc[q],score<=q_sc[q+1])
   }
-   ad %>%     
+  ad %>%     
     group_by(school, program) %>%
     dplyr:: summarise(cutoff = min(score),
                       quality = mean(score),
                       distance = mean(distance),
                       .groups="drop") %>%
-     dplyr:: summarise(cutoff_mean = min(cutoff),
+    dplyr:: summarise(cutoff_mean = min(cutoff),
                       cutoff_sd = sd(cutoff),
                       quality_mean = mean(quality),
                       quality_sd = sd(quality),
                       distance_mean = mean(distance,na.rm=TRUE),
                       distance_sd = sd(distance,na.rm=TRUE))
 }
-```
 
-row number represents the rank of choice
-
-```{r}
+# total summary
 map_df(1:6, ad_summary)
-```
 
-row number represents the rank of choice
-
-the first table represents the first quartile test score, and so on
-
-```{r}
+# summary by test score quartile
 map(1:4, function(y) map_df(1:6, function(x) ad_summary(n=x,q=y)))
-```
+
+
 
 ## PART 2
 
 ### Exercise 5 Data creation
 
-```{r}
 set.seed(111)
 n <- 10000 
 x1 <- runif(n,1,3)
@@ -214,26 +143,16 @@ e <- rnorm(n,2,1)
 y <- 0.5+ 1.2*x1 - 0.9*x2 +0.1*x3 + e
 y_bar <- mean(y)
 ydum <- as.integer(y > y_bar)
-```
 
 ### Exercise 6 OLS
 
-```{r}
 cor(y,x1)
-```
 
-the correlation between y and x1 is significantly different from 1.2
-
-```{r}
 x <- rbind(rep(1,n),x1,x2,x3)
 b <- solve(x%*%t(x))%*%x%*%y
 rownames(b)[1] <- 'intercept'
 colnames(b) <- 'est_beta'
-```
 
-I calculate the sd of coefficients based on both true sigma and estimated sigma of error term.
-
-```{r}
 sig2 <- 1
 sig2_hat <- sum((y - t(x)%*%b)^2)/(n-4)
 b_sd <- as.data.frame(sqrt(diag(solve(x%*%t(x))*sig2))) # use true sig2
@@ -242,23 +161,13 @@ colnames(b_sd) <- 'beta_sd_true_sig2'
 b_sd_ <-  as.data.frame(sqrt(diag(solve(x%*%t(x))*sig2_hat))) # use estimate sig2
 rownames(b_sd_)[1] <- 'intercept'
 colnames(b_sd_) <- 'beta_sd_est_sig2'
-```
 
-```{r}
 cbind(b,b_sd,b_sd_)
-``` 
-
-```{r include=FALSE}
-df <- data.frame(y,t(x))
-reg_ols <- lm(y ~ x1 + x2 + x3, df)
-summary(reg_ols)
-```
 
 ### Exercise 7 Discrete choice
 
-Since the probability must between 0 and 1, the linear probability model's likelihood function is not continuous (set $p = x\beta$, when $x\beta < 0$, let $p = 0$, when $x\beta > 1$, let $p = 1$). As a result, we cannot calculate the hessian matrix for linear probability model.
+#### beta estimate
 
-```{r}
 logit <- function(x,b) {
   xb <- t(x) %*% b
   return(exp(xb)/(1+exp(xb)))
@@ -277,11 +186,7 @@ log_lik <- function(f,y,x,b) {
   likelihood <- (p^y)*((1-p)^(1-y))
   return(sum(log(likelihood)))
 }
-```
 
-if we ignore the fact that $p = x\beta$ must between 0 and 1, then y is not a Bernoulli distribution but a normal distribution given $\epsilon$ is a normal distribution. we can just use ols to estimate the parameters and parameters' standard deviation
-
-```{r}
 set.seed(111)
 start <- rnorm(4)
 # logit
@@ -302,19 +207,14 @@ lp <- optim(par=start,fn=fn3,method="BFGS",hessian = TRUE)
 # linear
 ln <- NULL
 ln$par <- solve(x%*%t(x))%*%x%*%ydum
-```
 
-```{r}
-# show results
 binary_reg_beta <- cbind(pb$par,lg$par,lp$par, ln$par)
 rownames(binary_reg_beta) <- c("intercept","x1","x2","x3")
 colnames(binary_reg_beta) <- c("probit","logit","linear prob", "linear")
 binary_reg_beta
-```
 
-above table shows the estimated coefficient of logit, probit and linear model
+#### beta sd estimate
 
-```{r}
 lg$sd <- sqrt(diag(solve(lg$hessian)))
 lg_coef <- cbind(lg$par,lg$sd)
 rownames(lg_coef) <- c("intercept","x1","x2","x3")
@@ -330,47 +230,17 @@ ln$sd <- as.data.frame(sqrt(diag(solve(x%*%t(x))*sig2_hat_)))
 ln_coef <-  cbind(ln$par,ln$sd)
 rownames(ln_coef)[1] <- 'intercept'
 colnames(ln_coef) <- c("coef","sd")
-```
 
-```{r}
-lg_coef
-```
-
-we can see that all of the coefficients are significantly different from 0. for intercept, x1 and x2, the significant level is 1%, while for x3, the significant level is 5%. this means that under 5% significant level, we can say that intercept, x1 and x3 have positive impact on the probability of y = 1, while x2 has negative impact on the probability of y = 1
-
-```{r}
-pb_coef
-```
-
-```{r}
-ln_coef
-```
-
-the probit model and linear model shows similar results
-
-```{r include=FALSE}
-df2 <- data.frame(ydum,t(x))
-
-reg_lg <- glm(formula = ydum ~ x1 + x2 + x3, data = df2, family=binomial(link=logit))
-logLik(reg_lg)
-log_lik(logit,ydum,x,lg$par)
-summary(reg_lg)$coefficients
 lg_coef
 
-reg_pb <- glm(formula = ydum ~ x1 + x2 + x3, data = df2, family=binomial(link=probit))
-logLik(reg_pb)
-log_lik(probit,ydum,x,pb$par)
-summary(reg_pb)$coefficients
 pb_coef
 
-reg_ln <- lm(formula = ydum ~ x1 + x2 + x3, data = df2)
-summary(reg_ln)$coefficients
 ln_coef
-```
 
 ### Exercise 8 Marginal Effects
 
-```{r}
+#### marginal effect
+
 logit_gradient <- function(x,b) {
   xb <- t(x) %*% b
   return(exp(xb)/(1+exp(xb))^2)
@@ -387,36 +257,13 @@ lg_me <- map_dbl(map(lg_par,function(a) logit_gradient(x,lg$par)*a), mean)
 pb_par <- pb$par[-1]
 names(pb_par) <- c("x1","x2","x3")
 pb_me <- map_dbl(map(pb_par,function(a) probit_gradient(x,pb$par)*a), mean)
-```
 
-```{r}
 lg_me
-```
 
-```{r}
 pb_me
-```
 
-we can see that the marginal effect of logit and probit model are almost the same
+#### marginal effect sd 
 
-```{r include=FALSE}
-sample_lg_me <- NULL
-for (i in 1:10) {
-  start <- runif(4,0,1)
-  sample_idx <- sample.int(n,size=n,replace=TRUE)
-  sample <- x[,sample_idx]
-  sample_fn1 <- function(b){
-    return(-log_lik(f=probit,y=ydum[sample_idx],x=sample,b))
-  }
-  sample_lg <- optim(par=start,fn=sample_fn1)
-  sample_lg_par <- sample_lg$par[-1]
-  names(sample_lg_par) <- c("x1","x2","x3")
-  sample_lg_me <- rbind(map_dbl(map(sample_lg_par,function(a) probit_gradient(x,sample_lg$par)*a), mean), sample_lg_me)
-}
-apply(sample_lg_me,2,sd)
-```
-
-```{r}
 bootstrap <- function(f,g,iter) {
   sample_me <- NULL
   for (i in 1:iter) {
@@ -434,16 +281,9 @@ bootstrap <- function(f,g,iter) {
   }
   return(apply(sample_me,2,sd))
 }
-```
 
-```{r}
 logit_me_sd <- bootstrap(logit,logit_gradient,100)
 logit_me_sd
-```
 
-```{r}
 probit_me_sd <- bootstrap(probit,probit_gradient,100)
 probit_me_sd
-```
-
-using bootstrap, we can calculate the standard deviation of marginal effect of logit and probit models. it seems that standard deviation of marginal effect of two models are approximately the same.
