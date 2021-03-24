@@ -282,8 +282,4 @@ bootstrap <- function(f,g,iter) {
   return(apply(sample_me,2,sd))
 }
 
-logit_me_sd <- bootstrap(logit,logit_gradient,100)
-logit_me_sd
 
-probit_me_sd <- bootstrap(probit,probit_gradient,100)
-probit_me_sd

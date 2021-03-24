@@ -1,0 +1,304 @@
+---
+title: "A2"
+author: "Yue Han"
+date: "3/24/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE}
+library(bayesm)
+library(tidyverse)
+data(margarine)
+```
+
+## Exercise 1 Data Description
+
+### Average and dispersion in product characteristics
+
+```{r}
+apply(margarine$choicePrice[,3:12],2,mean)
+apply(margarine$choicePrice[,3:12],2,sd)
+```
+
+### Market share, and market share by product characteristics
+
+```{r}
+# Market share
+table(margarine$choicePrice$choice)/length(margarine$choicePrice$choice)
+```
+
+```{r}
+# Market share by product characteristics
+choice_by_price <- t(apply(margarine$choicePrice[,3:12], 1,function(x) x > apply(margarine$choicePrice[,3:12],2,mean)))
+
+choice_by_price_ <- data.frame(cbind(margarine$choicePrice[,2], choice_by_price))
+colnames(choice_by_price_) <- c("choice",1:10)
+choice_by_price__ <- choice_by_price_ %>% 
+  pivot_longer(!choice, names_to = "choice_", values_to = "over_avg") %>%
+  filter(choice == choice_) %>%
+  select(choice, over_avg)
+
+# Market share whose price under average price
+t(table(choice_by_price__))[1,]/length(margarine$choicePrice$choice)
+# Market share whose price over average price
+t(table(choice_by_price__))[2,]/length(margarine$choicePrice$choice)
+```
+
+### Mapping between observed attributes and choices
+
+```{r}
+choice_demos <- merge(margarine$choicePrice, margarine$demos, "hhid")
+
+# mapping between income and choice
+table(choice_demos[,c(2,13)])
+
+# mapping between family size and choice
+table(choice_demos[,c(2,14)])
+table(choice_demos[,c(2,15)])
+table(choice_demos[,c(2,16)])
+
+# mapping between education status and choice
+table(choice_demos[,c(2,17)])
+
+# mapping between job status and choice
+table(choice_demos[,c(2,18)])
+
+# mapping between retirement status and choice
+table(choice_demos[,c(2,19)])
+```
+
+## Exercise 2 First Model
+
+Our first model specification is conditional logit model, since the regressors(price) vary across alternatives.
+
+To be specific, we denote $p_{ij}$ as probability of ith individual whose choice is j. $p_{ij} = \frac{\exp(\alpha+x_{ij}\beta)}{\sum_{k=1}^m\exp(\alpha+x_{ik}\beta)}$
+where $\alpha = [\alpha_1,...,\alpha_{10}]$. We set $\alpha_1 = 0$.
+
+The negative log likelihood is $-\sum_{i=1}^n \sum_{j=1}^m y_{ij}\ln(p_{ij})$
+
+```{r}
+choice <- 1:10
+names(choice) <- 1:10
+y <- as.matrix(map_df(choice, function(x) as.integer(margarine$choicePrice$choice == x)))
+x_1 <- choice_demos[,3:12]
+```
+
+```{r}
+cl_p <- function(x,b) {
+    e <- exp(matrix(rep(c(0,b[1:9]),nrow(x)),byrow = TRUE,nrow(x))+x*b[10])
+    e_sum <- apply(e,1,sum)
+    return(e/e_sum)
+}
+cl_ll <- function(y,x,b) {
+  ln_p <- log(cl_p(x,b))
+  return(-sum(y * ln_p))
+}
+```
+
+```{r}
+set.seed(1)
+cl <- optim(function(b) cl_ll(y=y,x=x_1,b=b), par = runif(10),method = "BFGS")
+cl$par
+```
+
+The first 9 parameters are intercepts of goods 2 to 10, and the last parameter is the effect of price. 
+
+If one good's intercept is positive, it means that compare to the good 1, individual is more likely to choose that good. One the other hand, if one good's intercept is negative, then individual is less likely to choose that good compare to good 1. 
+
+The negative sign of last parameter indicates that the higher the price is, the less likely individual will choose that good.
+
+
+## Exercise 3 Second Model
+
+Our second model specification is  multinomial logit model, since the regressors(family income) are invariant across alternatives.
+
+To be specific, we denote $p_{ij}$ as probability of ith individual whose choice is j. $p_{ij} = \frac{\exp(\alpha+x_{ij}\beta_j)}{\sum_{k=1}^m\exp(\alpha+x_{ik}\beta_k)}$
+where $\alpha = [\alpha_1,...,\alpha_{10}]$. We set $\alpha_1 = 0$ and $\beta_1=0$.
+
+The negative log likelihood is $-\sum_{i=1}^n \sum_{j=1}^m y_{ij}\ln(p_{ij})$
+
+```{r}
+x_2 <- as.matrix(choice_demos[,13],ncol=1)
+```
+
+```{r}
+ml_p <- function(x,b) {
+  e <- exp(
+    matrix(rep(c(0,b[1:9]),nrow(x)),
+           byrow = TRUE,
+           nrow(x)
+           )
+    +t(apply(x,1,function(x)x*c(0,b[10:18])))
+    )
+  e_sum <- apply(e,1,sum)
+  return(e/e_sum)
+}
+ml_ll <- function(y,x,b) {
+  ln_p <- log(ml_p(x,b))
+  return(-sum(y * ln_p))
+}
+```
+
+```{r}
+set.seed(1)
+ml <- optim(function(b) ml_ll(y=y,x=x_2,b=b), par = runif(18), method = "BFGS")
+ml$par
+```
+
+The first 9 parameters are intercepts of goods 2 to 10, and the last 9 parameters are the effect of income of goods 2 to 10. 
+
+If one good's sign of effect is positive, it means that individual with higher income is more likely to choose that good compare to good 1. One the other hand, if one good's sign of effect is negative, individual with higher income is less likely to choose that good compare to good 1.
+
+## Exercise 4 Marginal Effects
+
+### first model 
+
+```{r}
+# prob of i individual choose j
+p_1 <- cl_p(x_1,cl$par)
+# indicator variable
+idc <- array(0, dim = c(nrow(x_1),10,10))
+for (i in 1:nrow(x_1)) {
+  diag(idc[i,,]) <- 1
+}
+```
+
+```{r}
+cl_me <- array(0, dim = c(nrow(x_1),10,10))
+for (i in 1:nrow(x_1)) {
+  for (j in 1:10) {
+    for (k in 1:10) {
+      cl_me[i,j,k] <- p_1[i,j]*(idc[i,j,k] - p_1[i,k])*cl$par[10]
+    }
+  }
+}
+```
+
+```{r}
+apply(cl_me, c(2,3), mean)
+```
+
+It is not surprise that all the diagonal elements are negative while the other elements are all positive. It means that if one good's price increase, people will be willing to choose other goods.
+
+### second model 
+
+```{r}
+# prob of i individual choose j
+p_2 <- ml_p(x_2,ml$par)
+# beta
+ml_b <- c(0,ml$par[10:18])
+```
+
+```{r}
+ml_me <- array(0, dim = c(nrow(x_2),10))
+for (i in 1:nrow(x_2)) {
+  b_bar <- sum(p_2[i,]*ml_b)
+  for (j in 1:10) {
+    ml_me[i,j] <- p_2[i,j]*(ml_b[j]-b_bar)
+  }
+}
+for (i in 1:nrow(x_2)) {
+  b_bar <- sum(p_2[i,]*ml_b)
+  ml_me[i,] <- p_2[i,]*(ml_b-b_bar)
+}
+```
+
+```{r}
+apply(ml_me, 2, mean)
+```
+
+For goods 1, 2, 5, 7, if individual's income raise, he or she will choice these goods less, and will turn to the rest goods. 
+
+## Exercise 5 IIA
+
+```{r}
+mx_ll <- function(y,x,b,mx_p) {
+  ln_p <- log(mx_p(x,b))
+  return(-sum(y * ln_p))
+}
+```
+
+### full data
+
+We denote $p_{ij}$ as probability of ith individual whose choice is j. $p_{ij} = \frac{\exp(\alpha+x_{ij}\beta+w_i\gamma_j)}{\sum_{k=1}^m\exp(\alpha+x_{ik}\beta++w_i\gamma_k)}$
+where $\alpha = [\alpha_1,...,\alpha_{10}]$. We set $\alpha_1 = 0$ and $\gamma_1=0$.
+
+The negative log likelihood is $-\sum_{i=1}^n \sum_{j=1}^m y_{ij}\ln(p_{ij})$
+
+```{r}
+x_3 <- as.matrix(choice_demos[,3:13],ncol=1)
+```
+
+```{r}
+mx_p_1 <- function(x,b) {
+    e <- exp(
+    matrix(rep(c(0,b[1:9]),nrow(x)),
+           byrow = TRUE,
+           nrow(x)
+           )
+    +x[,1:10]*b[10]
+    +t(apply(matrix(x[,11],ncol=1),1,function(x)x*c(0,b[11:19])))
+    )
+    e_sum <- apply(e,1,sum)
+    return(e/e_sum)
+}
+```
+
+```{r}
+set.seed(1)
+mx_1 <- optim(function(b) mx_ll(y=y,x=x_3,b=b,mx_p=mx_p_1), par = runif(19), method = "BFGS")
+```
+
+$\beta^f$:
+
+```{r}
+mx_1$par
+```
+
+### remove second choice
+
+```{r}
+x_4 <- x_3[,-2]
+```
+
+```{r}
+mx_p_2 <- function(x,b) {
+    e <- exp(
+    matrix(rep(c(0,b[1:8]),nrow(x)),
+           byrow = TRUE,
+           nrow(x)
+           )
+    +x[,1:9]*b[9]
+    +t(apply(matrix(x[,10],ncol=1),1,function(x)x*c(0,b[10:17])))
+    )
+    e_sum <- apply(e,1,sum)
+    return(e/e_sum)
+}
+```
+
+```{r}
+set.seed(1)
+mx_2 <- optim(function(b) mx_ll(y=y[,-2],x=x_4,b=b,mx_p=mx_p_2), par = runif(17), method = "BFGS")
+```
+
+$\beta^r$:
+
+```{r}
+mx_2$par
+```
+
+### MTT statistics
+
+```{r}
+l_1 <- mx_ll(y=y[,-2],x=x_4,b=mx_1$par[-c(1,11)],mx_p=mx_p_2)
+l_2 <- mx_ll(y=y[,-2],x=x_4,b=mx_2$par,mx_p=mx_p_2)
+MTT <- 2*(l_1-l_2)
+c_v <- qchisq(0.95, length(mx_2$par))
+MTT < c_v
+```
+
+Since MTT less than critical value, we conclude that under 5% significant level, we cannot reject that IIA hold.
