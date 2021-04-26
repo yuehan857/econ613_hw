@@ -64,35 +64,50 @@ panel_data <- crime_population %>%
 df <- merge(officers, panel_data, by.x = c("month", "unit"), by.y=c("crime_month", "district"), all.x=TRUE)
 panel_df <- pdata.frame(df,index=c("NUID","month"))
 
-# pooled model 
+# use lm
+lm_pooled <- lm(
+  formula = arrest ~ tenure + total_crimes + median_income + share_of_black + share_of_hisp + share_of_white - 1,
+  data = df
+)
+# estimators
+# beta
+lm_pooled$coefficients[1]
+# gamma
+lm_pooled$coefficients[2:6]
+
+# check 
 pooled <- plm(
-  formula = arrest ~ tenure + total_crimes + median_income + share_of_black + share_of_hisp + share_of_white,
+  formula = arrest ~ tenure + total_crimes + median_income + share_of_black + share_of_hisp + share_of_white - 1,
   data = panel_df,
   model = "pooling"
 )
 # estimator
 # beta
-pooled$coefficients[2]
+pooled$coefficients[1]
 # gamma
-pooled$coefficients[3:7]
-
-# we can also use ols
-lm_pooled <- lm(
-  formula = arrest ~ tenure + total_crimes + median_income + share_of_black + share_of_hisp + share_of_white,
-  data = df
-)
-# estimators
-# beta
-lm_pooled$coefficients[2]
-# gamma
-lm_pooled$coefficients[3:7]
+pooled$coefficients[2:6]
 
 
 ## Exercise 4 Panel Data: More controls
 
-# fixed effect model
+# use lm
+fe1_ols <- lm(
+  formula = arrest ~ tenure + total_crimes + median_income + share_of_black + share_of_hisp + share_of_white + factor(unit) + factor(month) - 1,
+  data = df
+)
+# estimators
+# beta
+fe1_ols$coefficients[1]
+# gamma
+fe1_ols$coefficients[2:6]
+# psi
+fe1_ols$coefficients[7:31]
+# kappa
+fe1_ols$coefficients[32:length(fe1_ols$coefficients)]
+
+# check
 fe1 <- plm(
-  formula = arrest ~ tenure + total_crimes + median_income + share_of_black + share_of_hisp + share_of_white + factor(unit),
+  formula = arrest ~ tenure + total_crimes + median_income + share_of_black + share_of_hisp + share_of_white + factor(unit) - 1,
   effect = "time",
   data = panel_df,
   model = "within"
@@ -114,7 +129,7 @@ fixef(fe1)
 
 # within 
 fe2 <- plm(
-  formula = arrest ~ tenure + total_crimes + median_income + share_of_black + share_of_hisp + share_of_white + factor(unit),
+  formula = arrest ~ tenure + total_crimes + median_income + share_of_black + share_of_hisp + share_of_white + factor(unit) - 1,
   effect = "twoway",
   data = panel_df,
   model = "within"
@@ -122,7 +137,7 @@ fe2 <- plm(
 
 # between 
 fe3 <- plm(
-  formula = arrest ~ tenure + total_crimes + median_income + share_of_black + share_of_hisp + share_of_white + factor(unit) + factor(month),
+  formula = arrest ~ tenure + total_crimes + median_income + share_of_black + share_of_hisp + share_of_white + factor(unit) + factor(month) - 1,
   effect = "individual",
   data = panel_df,
   model = "between"
@@ -130,14 +145,14 @@ fe3 <- plm(
 
 # fd
 fe4 <- plm(
-  formula = arrest ~ tenure + total_crimes + median_income + share_of_black + share_of_hisp + share_of_white + factor(unit) + factor(month),
+  formula = arrest ~ tenure + total_crimes + median_income + share_of_black + share_of_hisp + share_of_white + factor(unit) + factor(month) - 1,
   effect = "individual",
   data = panel_df,
   model = "fd"
 )
 
 # compare beta
-est_betas <- c(fe2$coefficients[1], fe3$coefficients[2], fe4$coefficients[2])
+est_betas <- c(fe2$coefficients[1], fe3$coefficients[1], fe4$coefficients[1])
 names(est_betas) <- c("within", "between", "fd")
 est_betas
 
